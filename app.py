@@ -1475,7 +1475,7 @@ $$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
 def build_sidebar():
     """Draw the sidebar and return the page the user selected."""
     st.sidebar.markdown("## 📊 Sales Data Mining")
-    st.sidebar.caption("Mini Project · Unit II")
+    
 
     page = st.sidebar.radio(
         "Navigation",
