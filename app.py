@@ -78,36 +78,41 @@ def inject_custom_style():
     st.markdown(
         """
         <style>
-            /* Gradient banner used at the top of every page */
+            /* Hero section without gradient banner */
             .hero {
-                background: linear-gradient(120deg, #4C6FFF 0%, #8B5CF6 55%, #00C2A8 100%);
-                padding: 26px 30px;
-                border-radius: 16px;
-                color: #FFFFFF;
+                background: transparent;
+                padding: 10px 0;
+                border-radius: 0;
+                color: inherit;
                 margin-bottom: 22px;
             }
+
             .hero h1 {
                 margin: 0;
                 font-size: 30px;
                 font-weight: 700;
-                color: #FFFFFF;
+                color: inherit;
             }
+
             .hero p {
                 margin: 8px 0 0 0;
                 font-size: 15px;
-                opacity: 0.93;
-                color: #FFFFFF;
+                opacity: 0.8;
+                color: inherit;
             }
+
+            /* Keep pills working */
             .pill {
                 display: inline-block;
-                background: rgba(255,255,255,0.20);
+                background: rgba(76, 111, 255, 0.12);
                 border-radius: 20px;
                 padding: 3px 13px;
                 font-size: 12.5px;
                 margin: 10px 7px 0 0;
-                color: #FFFFFF;
+                color: inherit;
             }
-            /* Section heading with a coloured left bar */
+
+            /* Section heading */
             .section-title {
                 font-size: 20px;
                 font-weight: 650;
@@ -115,7 +120,8 @@ def inject_custom_style():
                 padding-left: 12px;
                 margin: 26px 0 14px 0;
             }
-            /* Tabs a little larger and easier to click */
+
+            /* Tabs */
             .stTabs [data-baseweb="tab"] {
                 font-size: 15px;
                 padding: 9px 18px;
@@ -124,7 +130,6 @@ def inject_custom_style():
         """,
         unsafe_allow_html=True,
     )
-
 
 def hero(title, subtitle, pills=None):
     """Draw the gradient banner at the top of a page."""
@@ -482,22 +487,22 @@ def page_overview():
     with tab_info:
         row = st.columns(3)
         with row[0].container(border=True):
-            st.metric("🔢 Numerical", len(types["numerical"]))
+            st.metric(" Numerical", len(types["numerical"]))
         with row[1].container(border=True):
-            st.metric("🔤 Categorical", len(types["categorical"]))
+            st.metric(" Categorical", len(types["categorical"]))
         with row[2].container(border=True):
-            st.metric("📅 Date / Time", len(types["datetime"]))
+            st.metric(" Date / Time", len(types["datetime"]))
 
         section("Every column at a glance")
         rows = []
         for column in df.columns:
             missing = int(df[column].isna().sum())
             if column in types["numerical"]:
-                attribute_type = "🔢 Numerical"
+                attribute_type = " Numerical"
             elif column in types["datetime"]:
-                attribute_type = "📅 Date / Time"
+                attribute_type = " Date / Time"
             else:
-                attribute_type = "🔤 Categorical"
+                attribute_type = " Categorical"
             rows.append({
                 "Column": column,
                 "Attribute Type": attribute_type,
@@ -569,7 +574,7 @@ def page_overview():
 
         st.dataframe(pd.DataFrame(stats_rows), width="stretch", hide_index=True)
 
-        with st.expander("ℹ️  What do these measures mean?"):
+        with st.expander(" What do these measures mean?"):
             st.markdown(
                 "- **Mean** — the average. Pulled around by extreme values.\n"
                 "- **Median** — the middle value. A safer centre when outliers exist.\n"
@@ -608,7 +613,7 @@ def page_preprocessing():
         st.metric("Duplicate Rows", f"{int(df.duplicated().sum()):,}")
 
     tab_clean, tab_transform, tab_bin, tab_reduce = st.tabs(
-        ["🧽  Cleaning", "🔄  Transformation", "🪣  Discretization", "✂️  Reduction"]
+        ["  Cleaning", "  Transformation", "  Discretization", "  Reduction"]
     )
 
     with tab_clean:
@@ -632,7 +637,7 @@ def tab_cleaning():
         "Fills numerical gaps with the median, categorical gaps with the mode, "
         "and removes duplicate rows — all in one step."
     )
-    if st.button("✨  Clean Dataset Automatically", type="primary", width="stretch"):
+    if st.button("  Clean Dataset Automatically", type="primary", width="stretch"):
         types = detect_column_types(df)
         before_missing = int(df.isna().sum().sum())
         before_rows = df.shape[0]
@@ -695,7 +700,7 @@ def tab_cleaning():
             "is safer than the mean when outliers are present."
         )
 
-        if st.button("✅  Apply treatment"):
+        if st.button("  Apply treatment"):
             types = detect_column_types(df)
             before_missing = int(df.isna().sum().sum())
             before_rows = df.shape[0]
@@ -1479,8 +1484,8 @@ def build_sidebar():
 
     page = st.sidebar.radio(
         "Navigation",
-        ["🏠 Home", "📋 Dataset Overview", "🧹 Data Preprocessing",
-         "📊 Visualization", "📐 Similarity Analysis"],
+        [" Home", " Dataset Overview", " Data Preprocessing",
+         " Visualization", " Similarity Analysis"],
         label_visibility="collapsed",
     )
 
@@ -1496,13 +1501,13 @@ def build_sidebar():
 
         st.sidebar.divider()
         st.sidebar.download_button(
-            "⬇️  Download Cleaned Dataset",
+            "⬇  Download Cleaned Dataset",
             data=csv_bytes(df),
             file_name="cleaned_dataset.csv",
             mime="text/csv",
             width="stretch",
         )
-        if st.sidebar.button("↩️  Reset to Original", width="stretch"):
+        if st.sidebar.button("↩  Reset to Original", width="stretch"):
             st.session_state.df_working = st.session_state.df_original.copy()
             st.session_state.action_log = []
             st.rerun()
@@ -1510,7 +1515,7 @@ def build_sidebar():
         st.sidebar.info("No dataset loaded yet.")
 
     st.sidebar.divider()
-    st.sidebar.caption("Python · Pandas · NumPy · Scikit-learn · Plotly · Streamlit")
+    
     return page
 
 
