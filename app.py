@@ -31,6 +31,14 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from supabase_client import get_client
+from database import (
+    get_dataset_count,
+    get_latest_dataset,
+    get_all_datasets,
+    save_dataset_record,
+)
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics.pairwise import (
     cosine_similarity,
@@ -343,14 +351,156 @@ def activate_dataset(df, source_label):
         log("Detected and parsed date column(s): " + ", ".join(converted))
 
 
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+
+def friendly_auth_error(error) -> str:
+    """Convert a Supabase auth error into a simple user-facing message."""
+    text = str(error).lower()
+    if "already registered" in text or "already exists" in text:
+        return "An account with this email already exists. Try logging in instead."
+    if "invalid login credentials" in text:
+        return "Incorrect email or password."
+    if "password" in text and "6 characters" in text:
+        return "Password must be at least 6 characters."
+    if "email" in text and "invalid" in text:
+        return "Please enter a valid email address."
+    return "Something went wrong. Please try again."
+
+
+def sign_up(name, email, password, confirm_password):
+    if not name or not email or not password:
+        return "Please fill in every field."
+    if password != confirm_password:
+        return "Passwords do not match."
+    if len(password) < 6:
+        return "Password must be at least 6 characters."
+
+    try:
+        get_client().auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {"data": {"name": name}},
+        })
+    except Exception as error:
+        return friendly_auth_error(error)
+    return None
+
+
+def log_in(email, password):
+    if not email or not password:
+        return "Please enter your email and password."
+    try:
+        response = get_client().auth.sign_in_with_password({
+            "email": email, "password": password
+        })
+        profile = (get_client().table("profiles").select("name")
+                   .eq("id", response.user.id).execute())
+        name = profile.data[0]["name"] if profile.data else response.user.email
+        st.session_state.user = {
+            "id": response.user.id,
+            "email": response.user.email,
+            "name": name,
+        }
+    except Exception as error:
+        return friendly_auth_error(error)
+    return None
+
+
+def log_out():
+    try:
+        get_client().auth.sign_out()
+    except Exception:
+        pass
+    st.session_state.user = None
+    st.session_state.df_original = None
+    st.session_state.df_working = None
+    st.session_state.data_source = None
+    st.session_state.action_log = []
+
+
+def auth_screen():
+    st.title("📊 Smart Sales Data Mining")
+    st.caption("Mini Project · Unit II — Data Mining")
+
+    left, _ = st.columns([1, 1])
+    with left:
+        login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+
+        with login_tab:
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            if st.button("Login", type="primary", width="stretch"):
+                error = log_in(email, password)
+                if error:
+                    st.error(error)
+                else:
+                    st.rerun()
+
+        with signup_tab:
+            name = st.text_input("Name", key="signup_name")
+            email_su = st.text_input("Email", key="signup_email")
+            password_su = st.text_input("Password", type="password", key="signup_password")
+            confirm_su = st.text_input("Confirm Password", type="password", key="signup_confirm")
+            if st.button("Sign Up", type="primary", width="stretch"):
+                error = sign_up(name, email_su, password_su, confirm_su)
+                if error:
+                    st.error(error)
+                else:
+                    st.success("Account created. Please log in.")
+
+
 # Streamlit re-runs this whole file on every click, so session_state is the
 # only way to remember the dataset between clicks.
 for key, default in [
+    ("user", None),
     ("df_original", None), ("df_working", None),
     ("data_source", None), ("action_log", []),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
+
+
+def _find_numeric_column(df, hints):
+    """Return a numeric column whose name best matches the supplied hints."""
+    numerical = detect_column_types(df)["numerical"]
+    return guess_column(numerical, hints)
+
+
+def save_current_dataset_record(name, df):
+    """Save lightweight metadata for the logged-in user's history."""
+    user = st.session_state.user
+    if not user or df is None or df.empty:
+        return
+
+    types = detect_column_types(df)
+    sales_col = _find_numeric_column(df, HINTS_VALUE)
+    profit_col = _find_numeric_column(df, HINTS_PROFIT)
+    quantity_col = _find_numeric_column(df, ["quantity", "qty", "units", "count"])
+
+    record = {
+        "name": str(name),
+        "storage_path": None,
+        "rows": int(df.shape[0]),
+        "columns": int(df.shape[1]),
+        "numerical_columns": int(len(types["numerical"])),
+        "categorical_columns": int(len(types["categorical"])),
+        "missing_values": int(df.isna().sum().sum()),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "sales_column": str(sales_col) if sales_col else None,
+        "total_sales": float(df[sales_col].sum()) if sales_col else None,
+        "average_sales": float(df[sales_col].mean()) if sales_col else None,
+        "profit_column": str(profit_col) if profit_col else None,
+        "total_profit": float(df[profit_col].sum()) if profit_col else None,
+        "average_profit": float(df[profit_col].mean()) if profit_col else None,
+        "quantity_column": str(quantity_col) if quantity_col else None,
+        "total_quantity": float(df[quantity_col].sum()) if quantity_col else None,
+    }
+    try:
+        save_dataset_record(user["id"], record)
+    except Exception as error:
+        st.warning("Dataset loaded, but history could not be saved: " + str(error))
 
 
 # =============================================================================
@@ -383,6 +533,7 @@ def page_home():
                     st.error(error)
                 else:
                     activate_dataset(df, uploaded_file.name)
+                    save_current_dataset_record(uploaded_file.name, st.session_state.df_working)
                     st.success("Loaded successfully: " + uploaded_file.name)
 
     with right:
@@ -401,6 +552,7 @@ def page_home():
                     st.error("Sample file not found. Expected it at data/sales_dataset.csv")
                 else:
                     activate_dataset(sample, "sales_dataset.csv (sample)")
+                    save_current_dataset_record("sales_dataset.csv (sample)", st.session_state.df_working)
                     st.success("Sample dataset loaded.")
 
     df = st.session_state.df_working
@@ -1473,19 +1625,111 @@ $$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
         )
 
 
+def page_dashboard():
+    user = st.session_state.user
+    hero(
+        "📊 Smart Sales Data Mining",
+        " upload, preprocess, visualize and compare datasets",
+        ["Supabase", "CSV Analysis", "History"],
+    )
+
+    try:
+        dataset_count = get_dataset_count(user["id"])
+        latest = get_latest_dataset(user["id"])
+    except Exception as error:
+        st.error("Could not load your dashboard data. Details: " + str(error))
+        return
+
+    row = st.columns(4)
+    row[0].metric("Datasets Analyzed", dataset_count)
+    row[1].metric("Last Dataset", latest["name"] if latest else "—")
+    row[2].metric("Last Rows", f"{latest['rows']:,}" if latest else "—")
+    row[3].metric("Last Columns", latest["columns"] if latest else "—")
+
+    st.markdown("### Welcome, " + str(user["name"]))
+    if latest:
+        st.info("Your latest dataset is **" + str(latest["name"]) + "**. Use the sidebar to open it again or analyze another CSV.")
+    else:
+        st.info("No dataset history yet. Open **Upload Dataset** to get started.")
+
+
+def page_history():
+    hero("🗂️ Dataset History", "Datasets saved for your account in Supabase.", ["Personal History"])
+    try:
+        datasets = get_all_datasets(st.session_state.user["id"])
+    except Exception as error:
+        st.error("Could not load history. Details: " + str(error))
+        return
+
+    if not datasets:
+        st.info("No saved datasets yet. Upload a CSV first.")
+        return
+
+    table = pd.DataFrame(datasets)
+    display_cols = [
+        "name", "rows", "columns", "numerical_columns", "categorical_columns",
+        "missing_values", "duplicate_rows", "total_sales", "total_profit", "created_at"
+    ]
+    display_cols = [c for c in display_cols if c in table.columns]
+    st.dataframe(table[display_cols], width="stretch", hide_index=True)
+    st.caption("History stores dataset summary metadata; the active cleaned dataset remains in the current session.")
+
+
+def page_compare():
+    hero("🔎 Compare Datasets", "Compare summary statistics of two datasets saved to your account.", ["History", "Comparison"])
+    try:
+        datasets = get_all_datasets(st.session_state.user["id"])
+    except Exception as error:
+        st.error("Could not load datasets. Details: " + str(error))
+        return
+
+    if len(datasets) < 2:
+        st.info("You need at least two saved datasets before using Compare.")
+        return
+
+    labels = [f"{d['name']} — {d['created_at']}" for d in datasets]
+    left, right = st.columns(2)
+    a_index = left.selectbox("Dataset 1", range(len(datasets)), format_func=lambda i: labels[i])
+    b_index = right.selectbox("Dataset 2", range(len(datasets)), index=1, format_func=lambda i: labels[i])
+    a, b = datasets[a_index], datasets[b_index]
+
+    metrics = [
+        ("Rows", a.get("rows"), b.get("rows")),
+        ("Columns", a.get("columns"), b.get("columns")),
+        ("Numerical Columns", a.get("numerical_columns"), b.get("numerical_columns")),
+        ("Categorical Columns", a.get("categorical_columns"), b.get("categorical_columns")),
+        ("Missing Values", a.get("missing_values"), b.get("missing_values")),
+        ("Duplicate Rows", a.get("duplicate_rows"), b.get("duplicate_rows")),
+        ("Total Sales", a.get("total_sales"), b.get("total_sales")),
+        ("Average Sales", a.get("average_sales"), b.get("average_sales")),
+        ("Total Profit", a.get("total_profit"), b.get("total_profit")),
+        ("Average Profit", a.get("average_profit"), b.get("average_profit")),
+        ("Total Quantity", a.get("total_quantity"), b.get("total_quantity")),
+    ]
+    comparison = pd.DataFrame({
+        "Metric": [m[0] for m in metrics],
+        a["name"]: [m[1] for m in metrics],
+        b["name"]: [m[2] for m in metrics],
+    })
+    st.dataframe(comparison, width="stretch", hide_index=True)
+
+
 # =============================================================================
 # SECTION 9 : SIDEBAR AND ROUTER
 # =============================================================================
 
 def build_sidebar():
-    """Draw the sidebar and return the page the user selected."""
+    """Draw the authenticated sidebar and return the selected page."""
+    user = st.session_state.user
     st.sidebar.markdown("## 📊 Sales Data Mining")
-    
+    st.sidebar.caption("Logged in as " + str(user["email"]))
 
     page = st.sidebar.radio(
         "Navigation",
-        [" Home", " Dataset Overview", " Data Preprocessing",
-         " Visualization", " Similarity Analysis"],
+        [
+            "Dashboard", "Upload Dataset", "Dataset Overview", "Preprocessing",
+            "Visualization", "Similarity Analysis", "History", "Compare"
+        ],
         label_visibility="collapsed",
     )
 
@@ -1498,16 +1742,14 @@ def build_sidebar():
         info[0].metric("Rows", f"{df.shape[0]:,}")
         info[1].metric("Cols", df.shape[1])
         st.sidebar.metric("Missing", f"{int(df.isna().sum().sum()):,}")
-
-        st.sidebar.divider()
         st.sidebar.download_button(
-            "⬇  Download Cleaned Dataset",
+            "⬇ Download Cleaned Dataset",
             data=csv_bytes(df),
             file_name="cleaned_dataset.csv",
             mime="text/csv",
             width="stretch",
         )
-        if st.sidebar.button("↩  Reset to Original", width="stretch"):
+        if st.sidebar.button("↩ Reset to Original", width="stretch"):
             st.session_state.df_working = st.session_state.df_original.copy()
             st.session_state.action_log = []
             st.rerun()
@@ -1515,7 +1757,10 @@ def build_sidebar():
         st.sidebar.info("No dataset loaded yet.")
 
     st.sidebar.divider()
-    
+    if st.sidebar.button("Logout", width="stretch"):
+        log_out()
+        st.rerun()
+
     return page
 
 
@@ -1523,17 +1768,29 @@ def main():
     inject_custom_style()
     page = build_sidebar()
 
-    if page.endswith("Home"):
+    if page == "Dashboard":
+        page_dashboard()
+    elif page == "Upload Dataset":
         page_home()
-    elif page.endswith("Dataset Overview"):
+    elif page == "Dataset Overview":
         page_overview()
-    elif page.endswith("Data Preprocessing"):
+    elif page == "Preprocessing":
         page_preprocessing()
-    elif page.endswith("Visualization"):
+    elif page == "Visualization":
         page_visualization()
-    elif page.endswith("Similarity Analysis"):
+    elif page == "Similarity Analysis":
         page_similarity()
+    elif page == "History":
+        page_history()
+    elif page == "Compare":
+        page_compare()
 
 
-# Streamlit runs this file top to bottom, so we call main() directly.
-main()
+# =============================================================================
+# ENTRY POINT
+# =============================================================================
+
+if st.session_state.user is None:
+    auth_screen()
+else:
+    main()
