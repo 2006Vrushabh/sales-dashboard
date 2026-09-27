@@ -36,7 +36,7 @@ from supabase_client import get_client
 from database import (
     get_dataset_count,
     get_latest_dataset,
-    get_all_datasets,
+    get_all_datasets,                     
     save_dataset_record,
 )
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -1471,247 +1471,6 @@ def chart_6_correlation(df, numerical):
             st.error("The heatmap could not be drawn. Details: " + str(error))
 
 
-# =============================================================================
-# SECTION 8 : PAGE 5  -  SIMILARITY ANALYSIS
-# =============================================================================
-
-def page_similarity():
-    hero(
-        "📐 Similarity Analysis",
-        "Measure how similar or dissimilar any two records in the dataset are",
-        ["Euclidean", "Manhattan", "Cosine"],
-    )
-
-    df = st.session_state.df_working
-    if not require(df is not None, "Please load a dataset on the Home page first.", "info"):
-        return
-
-    types = detect_column_types(df)
-    numerical = types["numerical"]
-    if not require(len(numerical) >= 1,
-                   "Similarity analysis needs at least one numerical column."):
-        return
-
-    st.markdown(
-        "**Distance** measures *dissimilarity* — bigger means more different. "
-        "**Cosine similarity** measures *similarity* — closer to 1 means more alike."
-    )
-
-    section("1 · Choose two records")
-    last = len(df) - 1
-    picker = st.columns(2)
-    row_a = picker[0].number_input("Record 1 (row number)", 0, last, 0, 1)
-    row_b = picker[1].number_input("Record 2 (row number)", 0, last, min(1, last), 1)
-    if row_a == row_b:
-        st.warning("Same record selected twice — distance will be 0 and cosine 1.")
-
-    section("2 · Choose the attributes to compare")
-    selected = st.multiselect("Numerical attributes", numerical,
-                              default=numerical[: min(5, len(numerical))])
-    if not require(len(selected) >= 1, "Please select at least one attribute."):
-        return
-
-    scale = st.checkbox(
-        "Standardize before comparing (recommended)", value=True,
-        help="Unit_Price reaches 95,000 while Discount only reaches 0.3. Without "
-             "scaling, Unit_Price alone would decide the distance.",
-    )
-
-    subset = df[selected].copy()
-    missing_here = int(subset.iloc[[row_a, row_b]].isna().sum().sum())
-    if missing_here:
-        st.info(str(missing_here) + " missing value(s) in these records were replaced "
-                "with the column median before calculating.")
-    subset = subset.fillna(subset.median(numeric_only=True)).dropna(axis=1, how="all")
-
-    if subset.shape[1] == 0:
-        st.warning("The selected attributes contain no usable values.")
-        return
-
-    try:
-        if scale:
-            prepared = pd.DataFrame(StandardScaler().fit_transform(subset),
-                                    columns=subset.columns, index=subset.index)
-        else:
-            prepared = subset
-    except Exception as error:
-        st.error("The attributes could not be prepared. Details: " + str(error))
-        return
-
-    # reshape(1, -1) turns one row into the 2D array scikit-learn expects
-    vector_a = prepared.iloc[row_a].to_numpy(dtype=float).reshape(1, -1)
-    vector_b = prepared.iloc[row_b].to_numpy(dtype=float).reshape(1, -1)
-
-    section("3 · The two records")
-    table = pd.DataFrame({
-        "Attribute": list(subset.columns),
-        "Record " + str(row_a): df.iloc[row_a][list(subset.columns)].values,
-        "Record " + str(row_b): df.iloc[row_b][list(subset.columns)].values,
-    })
-    if scale:
-        table["Scaled " + str(row_a)] = vector_a[0].round(4)
-        table["Scaled " + str(row_b)] = vector_b[0].round(4)
-    st.dataframe(table, width="stretch", hide_index=True)
-
-    section("4 · Results")
-    try:
-        euclidean = float(euclidean_distances(vector_a, vector_b)[0][0])
-        manhattan = float(manhattan_distances(vector_a, vector_b)[0][0])
-        # Cosine is undefined if either vector is all zeros
-        if np.allclose(vector_a, 0) or np.allclose(vector_b, 0):
-            cosine = np.nan
-        else:
-            cosine = float(cosine_similarity(vector_a, vector_b)[0][0])
-    except Exception as error:
-        st.error("The measures could not be calculated. Details: " + str(error))
-        return
-
-    results = st.columns(3)
-    with results[0].container(border=True):
-        st.metric("📏 Euclidean Distance", f"{euclidean:.4f}")
-    with results[1].container(border=True):
-        st.metric("🧱 Manhattan Distance", f"{manhattan:.4f}")
-    with results[2].container(border=True):
-        st.metric("🧭 Cosine Similarity",
-                  "Not defined" if pd.isna(cosine) else f"{cosine:.4f}")
-
-    if pd.isna(cosine):
-        st.caption("Cosine similarity is undefined because one record became a zero "
-                   "vector after scaling.")
-    else:
-        if cosine > 0.8:
-            st.success("These two records are very similar.")
-        elif cosine > 0.3:
-            st.info("These two records are moderately similar.")
-        elif cosine > -0.3:
-            st.warning("These two records are almost unrelated.")
-        else:
-            st.warning("These two records point in opposite directions.")
-
-    with st.expander("📖  Formulas used"):
-        st.markdown(
-            r"""
-For two records **p** and **q** with *n* numerical attributes:
-
-**Euclidean distance** (straight-line):
-$$d(p,q) = \sqrt{\sum_{i=1}^{n}(p_i - q_i)^2}$$
-
-**Manhattan distance** (city-block):
-$$d(p,q) = \sum_{i=1}^{n}|p_i - q_i|$$
-
-**Cosine similarity** (angle between the vectors):
-$$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
-            """
-        )
-
-    with st.expander("🔢  Step-by-step calculation"):
-        difference = vector_a[0] - vector_b[0]
-        st.dataframe(
-            pd.DataFrame({
-                "Attribute": list(subset.columns),
-                "p": vector_a[0].round(4),
-                "q": vector_b[0].round(4),
-                "p − q": difference.round(4),
-                "|p − q|": np.abs(difference).round(4),
-                "(p − q)²": (difference ** 2).round(4),
-            }),
-            width="stretch", hide_index=True,
-        )
-        st.markdown(
-            "- Sum of (p − q)² = **" + str(round(float((difference ** 2).sum()), 4))
-            + "** → Euclidean = square root = **" + str(round(euclidean, 4)) + "**\n"
-            "- Sum of |p − q| = **" + str(round(float(np.abs(difference).sum()), 4))
-            + "** → Manhattan = **" + str(round(manhattan, 4)) + "**"
-        )
-
-
-def page_dashboard():
-    user = st.session_state.user
-    hero(
-        "📊 Smart Sales Data Mining",
-        " upload, preprocess, visualize and compare datasets",
-        ["Supabase", "CSV Analysis", "History"],
-    )
-
-    try:
-        dataset_count = get_dataset_count(user["id"])
-        latest = get_latest_dataset(user["id"])
-    except Exception as error:
-        st.error("Could not load your dashboard data. Details: " + str(error))
-        return
-
-    row = st.columns(4)
-    row[0].metric("Datasets Analyzed", dataset_count)
-    row[1].metric("Last Dataset", latest["name"] if latest else "—")
-    row[2].metric("Last Rows", f"{latest['rows']:,}" if latest else "—")
-    row[3].metric("Last Columns", latest["columns"] if latest else "—")
-
-    st.markdown("### Welcome, " + str(user["name"]))
-    if latest:
-        st.info("Your latest dataset is **" + str(latest["name"]) + "**. Use the sidebar to open it again or analyze another CSV.")
-    else:
-        st.info("No dataset history yet. Open **Upload Dataset** to get started.")
-
-
-def page_history():
-    hero("🗂️ Dataset History", "Datasets saved for your account in Supabase.", ["Personal History"])
-    try:
-        datasets = get_all_datasets(st.session_state.user["id"])
-    except Exception as error:
-        st.error("Could not load history. Details: " + str(error))
-        return
-
-    if not datasets:
-        st.info("No saved datasets yet. Upload a CSV first.")
-        return
-
-    table = pd.DataFrame(datasets)
-    display_cols = [
-        "name", "rows", "columns", "numerical_columns", "categorical_columns",
-        "missing_values", "duplicate_rows", "total_sales", "total_profit", "created_at"
-    ]
-    display_cols = [c for c in display_cols if c in table.columns]
-    st.dataframe(table[display_cols], width="stretch", hide_index=True)
-    st.caption("History stores dataset summary metadata; the active cleaned dataset remains in the current session.")
-
-
-def page_compare():
-    hero("🔎 Compare Datasets", "Compare summary statistics of two datasets saved to your account.", ["History", "Comparison"])
-    try:
-        datasets = get_all_datasets(st.session_state.user["id"])
-    except Exception as error:
-        st.error("Could not load datasets. Details: " + str(error))
-        return
-
-    if len(datasets) < 2:
-        st.info("You need at least two saved datasets before using Compare.")
-        return
-
-    labels = [f"{d['name']} — {d['created_at']}" for d in datasets]
-    left, right = st.columns(2)
-    a_index = left.selectbox("Dataset 1", range(len(datasets)), format_func=lambda i: labels[i])
-    b_index = right.selectbox("Dataset 2", range(len(datasets)), index=1, format_func=lambda i: labels[i])
-    a, b = datasets[a_index], datasets[b_index]
-
-    metrics = [
-        ("Rows", a.get("rows"), b.get("rows")),
-        ("Columns", a.get("columns"), b.get("columns")),
-        ("Numerical Columns", a.get("numerical_columns"), b.get("numerical_columns")),
-        ("Categorical Columns", a.get("categorical_columns"), b.get("categorical_columns")),
-        ("Missing Values", a.get("missing_values"), b.get("missing_values")),
-        ("Duplicate Rows", a.get("duplicate_rows"), b.get("duplicate_rows")),
-        ("Total Sales", a.get("total_sales"), b.get("total_sales")),
-        ("Average Sales", a.get("average_sales"), b.get("average_sales")),
-        ("Total Profit", a.get("total_profit"), b.get("total_profit")),
-        ("Average Profit", a.get("average_profit"), b.get("average_profit")),
-        ("Total Quantity", a.get("total_quantity"), b.get("total_quantity")),
-    ]
-    comparison = pd.DataFrame({
-        "Metric": [m[0] for m in metrics],
-        a["name"]: [m[1] for m in metrics],
-        b["name"]: [m[2] for m in metrics],
-    })
-    st.dataframe(comparison, width="stretch", hide_index=True)
 
 
 # =============================================================================
@@ -1728,7 +1487,7 @@ def build_sidebar():
         "Navigation",
         [
             "Dashboard", "Upload Dataset", "Dataset Overview", "Preprocessing",
-            "Visualization", "Similarity Analysis", "History", "Compare"
+            "Visualization", "History", "Compare"
         ],
         label_visibility="collapsed",
     )
@@ -1764,6 +1523,106 @@ def build_sidebar():
     return page
 
 
+def page_dashboard():
+    """Simple dashboard landing page for the main navigation."""
+    hero(
+        "📈 Dashboard",
+        "A quick overview of the active dataset and its key measures.",
+        ["Summary", "Key Metrics"],
+    )
+
+    df = st.session_state.df_working
+    if df is None:
+        st.info("Please load a dataset on the Home page first.")
+        return
+
+    types = detect_column_types(df)
+    numerical = types["numerical"]
+    if not numerical:
+        st.warning("This dataset has no numerical columns to summarize.")
+        return
+
+    value_col = guess_column(numerical, HINTS_VALUE)
+    profit_col = guess_column([column for column in numerical if column != value_col], HINTS_PROFIT)
+
+    row = st.columns(4)
+    with row[0].container(border=True):
+        st.metric("Rows", f"{df.shape[0]:,}")
+    with row[1].container(border=True):
+        st.metric("Columns", f"{df.shape[1]:,}")
+    with row[2].container(border=True):
+        st.metric("Total " + str(value_col), f"{df[value_col].sum():,.2f}" if value_col else "—")
+    with row[3].container(border=True):
+        if value_col:
+            st.metric("Average " + str(value_col), f"{df[value_col].mean():,.2f}")
+        else:
+            st.metric("Average", "—")
+
+    if value_col and profit_col:
+        st.dataframe(df[[value_col, profit_col]].head(10), width="stretch")
+    elif value_col:
+        st.dataframe(df[[value_col]].head(10), width="stretch")
+
+    if st.session_state.action_log:
+        with st.expander("📜 Recent steps"):
+            for index, entry in enumerate(st.session_state.action_log[-8:], start=1):
+                st.write(str(index) + ". " + entry)
+
+
+def page_history():
+    """Show a lightweight history of actions taken in the current session."""
+    hero(
+        "🕘 History",
+        "A short log of the preprocessing steps applied during this session.",
+        ["Session Log"],
+    )
+
+    if not st.session_state.action_log:
+        st.info("No actions recorded yet.")
+        return
+
+    for index, entry in enumerate(st.session_state.action_log, start=1):
+        st.write(str(index) + ". " + entry)
+
+
+def page_compare():
+    """Small compare page for row-to-row review using the active dataset."""
+    hero(
+        "🔄 Compare",
+        "Compare two rows to inspect how values differ across the current dataset.",
+        ["Similarity", "Dissimilarity"],
+    )
+
+    df = st.session_state.df_working
+    if df is None:
+        st.info("Please load a dataset on the Home page first.")
+        return
+
+    if len(df) < 2:
+        st.warning("At least two rows are needed to compare records.")
+        return
+
+    left, right = st.columns(2)
+    with left:
+        row_a = st.selectbox("First row", range(len(df)), index=0, format_func=lambda i: f"Row {i + 1}")
+    with right:
+        row_b = st.selectbox("Second row", range(len(df)), index=1, format_func=lambda i: f"Row {i + 1}")
+
+    if row_a == row_b:
+        st.warning("Choose two different rows to compare.")
+        return
+
+    first = df.iloc[row_a]
+    second = df.iloc[row_b]
+    comparison = pd.DataFrame({
+        "Column": df.columns,
+        "Row A": first.values,
+        "Row B": second.values,
+        "Same": first.eq(second).tolist(),
+    })
+    st.dataframe(comparison, width="stretch", hide_index=True)
+
+
 def main():
     inject_custom_style()
     page = build_sidebar()
@@ -1778,8 +1637,6 @@ def main():
         page_preprocessing()
     elif page == "Visualization":
         page_visualization()
-    elif page == "Similarity Analysis":
-        page_similarity()
     elif page == "History":
         page_history()
     elif page == "Compare":
