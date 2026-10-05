@@ -31,14 +31,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
-from supabase_client import get_client
-from database import (
-    get_dataset_count,
-    get_latest_dataset,
-    get_all_datasets,                     
-    save_dataset_record,
-)
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics.pairwise import (
     cosine_similarity,
@@ -54,7 +46,7 @@ warnings.filterwarnings("ignore")
 # =============================================================================
 
 st.set_page_config(
-    page_title="Sales Data Mining",
+    page_title="DataLens",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -62,6 +54,9 @@ st.set_page_config(
 
 SAMPLE_DATA_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data", "sales_dataset.csv"
+)
+ROOT_SAMPLE_DATA_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "sales_dataset.csv"
 )
 
 # Colour palette used by every chart, so the whole app looks consistent.
@@ -86,41 +81,37 @@ def inject_custom_style():
     st.markdown(
         """
         <style>
-            /* Hero section without gradient banner */
+            /* Clean page heading - no gradient banner */
             .hero {
-                background: transparent;
+                background: none !important;
+                background-image: none !important;
                 padding: 10px 0;
                 border-radius: 0;
                 color: inherit;
                 margin-bottom: 22px;
             }
-
             .hero h1 {
                 margin: 0;
                 font-size: 30px;
                 font-weight: 700;
                 color: inherit;
             }
-
             .hero p {
                 margin: 8px 0 0 0;
                 font-size: 15px;
                 opacity: 0.8;
                 color: inherit;
             }
-
-            /* Keep pills working */
             .pill {
                 display: inline-block;
-                background: rgba(76, 111, 255, 0.12);
+                background: rgba(76,111,255,0.12);
                 border-radius: 20px;
                 padding: 3px 13px;
                 font-size: 12.5px;
                 margin: 10px 7px 0 0;
                 color: inherit;
             }
-
-            /* Section heading */
+            /* Section heading with a coloured left bar */
             .section-title {
                 font-size: 20px;
                 font-weight: 650;
@@ -128,8 +119,7 @@ def inject_custom_style():
                 padding-left: 12px;
                 margin: 26px 0 14px 0;
             }
-
-            /* Tabs */
+            /* Tabs a little larger and easier to click */
             .stTabs [data-baseweb="tab"] {
                 font-size: 15px;
                 padding: 9px 18px;
@@ -138,6 +128,7 @@ def inject_custom_style():
         """,
         unsafe_allow_html=True,
     )
+
 
 def hero(title, subtitle, pills=None):
     """Draw the gradient banner at the top of a page."""
@@ -334,9 +325,10 @@ def load_csv(uploaded_file):
 @st.cache_data
 def load_sample_dataset():
     """Load the bundled sample dataset (cached so it is only read once)."""
-    if not os.path.exists(SAMPLE_DATA_PATH):
+    sample_path = SAMPLE_DATA_PATH if os.path.exists(SAMPLE_DATA_PATH) else ROOT_SAMPLE_DATA_PATH
+    if not os.path.exists(sample_path):
         return None
-    return pd.read_csv(SAMPLE_DATA_PATH)
+    return pd.read_csv(sample_path)
 
 
 def activate_dataset(df, source_label):
@@ -351,156 +343,20 @@ def activate_dataset(df, source_label):
         log("Detected and parsed date column(s): " + ", ".join(converted))
 
 
-# =============================================================================
-# AUTHENTICATION
-# =============================================================================
-
-def friendly_auth_error(error) -> str:
-    """Convert a Supabase auth error into a simple user-facing message."""
-    text = str(error).lower()
-    if "already registered" in text or "already exists" in text:
-        return "An account with this email already exists. Try logging in instead."
-    if "invalid login credentials" in text:
-        return "Incorrect email or password."
-    if "password" in text and "6 characters" in text:
-        return "Password must be at least 6 characters."
-    if "email" in text and "invalid" in text:
-        return "Please enter a valid email address."
-    return "Something went wrong. Please try again."
-
-
-def sign_up(name, email, password, confirm_password):
-    if not name or not email or not password:
-        return "Please fill in every field."
-    if password != confirm_password:
-        return "Passwords do not match."
-    if len(password) < 6:
-        return "Password must be at least 6 characters."
-
-    try:
-        get_client().auth.sign_up({
-            "email": email,
-            "password": password,
-            "options": {"data": {"name": name}},
-        })
-    except Exception as error:
-        return friendly_auth_error(error)
-    return None
-
-
-def log_in(email, password):
-    if not email or not password:
-        return "Please enter your email and password."
-    try:
-        response = get_client().auth.sign_in_with_password({
-            "email": email, "password": password
-        })
-        profile = (get_client().table("profiles").select("name")
-                   .eq("id", response.user.id).execute())
-        name = profile.data[0]["name"] if profile.data else response.user.email
-        st.session_state.user = {
-            "id": response.user.id,
-            "email": response.user.email,
-            "name": name,
-        }
-    except Exception as error:
-        return friendly_auth_error(error)
-    return None
-
-
-def log_out():
-    try:
-        get_client().auth.sign_out()
-    except Exception:
-        pass
-    st.session_state.user = None
-    st.session_state.df_original = None
-    st.session_state.df_working = None
-    st.session_state.data_source = None
-    st.session_state.action_log = []
-
-
-def auth_screen():
-    st.title("📊 Smart Sales Data Mining")
-    st.caption("Mini Project · Unit II — Data Mining")
-
-    left, _ = st.columns([1, 1])
-    with left:
-        login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
-
-        with login_tab:
-            email = st.text_input("Email", key="login_email")
-            password = st.text_input("Password", type="password", key="login_password")
-            if st.button("Login", type="primary", width="stretch"):
-                error = log_in(email, password)
-                if error:
-                    st.error(error)
-                else:
-                    st.rerun()
-
-        with signup_tab:
-            name = st.text_input("Name", key="signup_name")
-            email_su = st.text_input("Email", key="signup_email")
-            password_su = st.text_input("Password", type="password", key="signup_password")
-            confirm_su = st.text_input("Confirm Password", type="password", key="signup_confirm")
-            if st.button("Sign Up", type="primary", width="stretch"):
-                error = sign_up(name, email_su, password_su, confirm_su)
-                if error:
-                    st.error(error)
-                else:
-                    st.success("Account created. Please log in.")
-
-
 # Streamlit re-runs this whole file on every click, so session_state is the
 # only way to remember the dataset between clicks.
 for key, default in [
-    ("user", None),
-    ("df_original", None), ("df_working", None),
-    ("data_source", None), ("action_log", []),
+    ("df_original", None),
+    ("df_working", None),
+    ("data_source", None),
+    ("action_log", []),
+    ("df_compare_a", None),
+    ("df_compare_b", None),
+    ("compare_a_name", None),
+    ("compare_b_name", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
-
-
-def _find_numeric_column(df, hints):
-    """Return a numeric column whose name best matches the supplied hints."""
-    numerical = detect_column_types(df)["numerical"]
-    return guess_column(numerical, hints)
-
-
-def save_current_dataset_record(name, df):
-    """Save lightweight metadata for the logged-in user's history."""
-    user = st.session_state.user
-    if not user or df is None or df.empty:
-        return
-
-    types = detect_column_types(df)
-    sales_col = _find_numeric_column(df, HINTS_VALUE)
-    profit_col = _find_numeric_column(df, HINTS_PROFIT)
-    quantity_col = _find_numeric_column(df, ["quantity", "qty", "units", "count"])
-
-    record = {
-        "name": str(name),
-        "storage_path": None,
-        "rows": int(df.shape[0]),
-        "columns": int(df.shape[1]),
-        "numerical_columns": int(len(types["numerical"])),
-        "categorical_columns": int(len(types["categorical"])),
-        "missing_values": int(df.isna().sum().sum()),
-        "duplicate_rows": int(df.duplicated().sum()),
-        "sales_column": str(sales_col) if sales_col else None,
-        "total_sales": float(df[sales_col].sum()) if sales_col else None,
-        "average_sales": float(df[sales_col].mean()) if sales_col else None,
-        "profit_column": str(profit_col) if profit_col else None,
-        "total_profit": float(df[profit_col].sum()) if profit_col else None,
-        "average_profit": float(df[profit_col].mean()) if profit_col else None,
-        "quantity_column": str(quantity_col) if quantity_col else None,
-        "total_quantity": float(df[quantity_col].sum()) if quantity_col else None,
-    }
-    try:
-        save_dataset_record(user["id"], record)
-    except Exception as error:
-        st.warning("Dataset loaded, but history could not be saved: " + str(error))
 
 
 # =============================================================================
@@ -511,7 +367,7 @@ def page_home():
     hero(
         "📊 Sales Data Mining",
         "Automated Data Preprocessing and Exploratory Analysis of Sales Data",
-        [ "Upload any CSV", "Clean → Transform → Visualize"],
+        ["Unit II : Data Mining", "Upload any CSV", "Clean → Transform → Visualize"],
     )
 
     section("1 · Load your dataset")
@@ -533,7 +389,6 @@ def page_home():
                     st.error(error)
                 else:
                     activate_dataset(df, uploaded_file.name)
-                    save_current_dataset_record(uploaded_file.name, st.session_state.df_working)
                     st.success("Loaded successfully: " + uploaded_file.name)
 
     with right:
@@ -549,10 +404,9 @@ def page_home():
             if st.button("📁  Use Sample Sales Dataset", width="stretch"):
                 sample = load_sample_dataset()
                 if sample is None:
-                    st.error("Sample file not found. Expected it at data/sales_dataset.csv")
+                    st.error("Sample file not found. Expected sales_dataset.csv in the project folder or data/sales_dataset.csv")
                 else:
                     activate_dataset(sample, "sales_dataset.csv (sample)")
-                    save_current_dataset_record("sales_dataset.csv (sample)", st.session_state.df_working)
                     st.success("Sample dataset loaded.")
 
     df = st.session_state.df_working
@@ -639,22 +493,22 @@ def page_overview():
     with tab_info:
         row = st.columns(3)
         with row[0].container(border=True):
-            st.metric(" Numerical", len(types["numerical"]))
+            st.metric("🔢 Numerical", len(types["numerical"]))
         with row[1].container(border=True):
-            st.metric(" Categorical", len(types["categorical"]))
+            st.metric("🔤 Categorical", len(types["categorical"]))
         with row[2].container(border=True):
-            st.metric(" Date / Time", len(types["datetime"]))
+            st.metric("📅 Date / Time", len(types["datetime"]))
 
         section("Every column at a glance")
         rows = []
         for column in df.columns:
             missing = int(df[column].isna().sum())
             if column in types["numerical"]:
-                attribute_type = " Numerical"
+                attribute_type = "🔢 Numerical"
             elif column in types["datetime"]:
-                attribute_type = " Date / Time"
+                attribute_type = "📅 Date / Time"
             else:
-                attribute_type = " Categorical"
+                attribute_type = "🔤 Categorical"
             rows.append({
                 "Column": column,
                 "Attribute Type": attribute_type,
@@ -726,7 +580,7 @@ def page_overview():
 
         st.dataframe(pd.DataFrame(stats_rows), width="stretch", hide_index=True)
 
-        with st.expander(" What do these measures mean?"):
+        with st.expander("ℹ️  What do these measures mean?"):
             st.markdown(
                 "- **Mean** — the average. Pulled around by extreme values.\n"
                 "- **Median** — the middle value. A safer centre when outliers exist.\n"
@@ -765,7 +619,7 @@ def page_preprocessing():
         st.metric("Duplicate Rows", f"{int(df.duplicated().sum()):,}")
 
     tab_clean, tab_transform, tab_bin, tab_reduce = st.tabs(
-        ["  Cleaning", "  Transformation", "  Discretization", "  Reduction"]
+        ["🧽  Cleaning", "🔄  Transformation", "🪣  Discretization", "✂️  Reduction"]
     )
 
     with tab_clean:
@@ -789,7 +643,7 @@ def tab_cleaning():
         "Fills numerical gaps with the median, categorical gaps with the mode, "
         "and removes duplicate rows — all in one step."
     )
-    if st.button("  Clean Dataset Automatically", type="primary", width="stretch"):
+    if st.button("✨  Clean Dataset Automatically", type="primary", width="stretch"):
         types = detect_column_types(df)
         before_missing = int(df.isna().sum().sum())
         before_rows = df.shape[0]
@@ -852,7 +706,7 @@ def tab_cleaning():
             "is safer than the mean when outliers are present."
         )
 
-        if st.button("  Apply treatment"):
+        if st.button("✅  Apply treatment"):
             types = detect_column_types(df)
             before_missing = int(df.isna().sum().sum())
             before_rows = df.shape[0]
@@ -1471,6 +1325,339 @@ def chart_6_correlation(df, numerical):
             st.error("The heatmap could not be drawn. Details: " + str(error))
 
 
+# =============================================================================
+# SECTION 8 : PAGE 5  -  SIMILARITY ANALYSIS
+# =============================================================================
+
+def page_similarity():
+    hero(
+        "📐 Similarity Analysis",
+        "Measure how similar or dissimilar any two records in the dataset are",
+        ["Euclidean", "Manhattan", "Cosine"],
+    )
+
+    df = st.session_state.df_working
+    if not require(df is not None, "Please load a dataset on the Home page first.", "info"):
+        return
+
+    types = detect_column_types(df)
+    numerical = types["numerical"]
+    if not require(len(numerical) >= 1,
+                   "Similarity analysis needs at least one numerical column."):
+        return
+
+    st.markdown(
+        "**Distance** measures *dissimilarity* — bigger means more different. "
+        "**Cosine similarity** measures *similarity* — closer to 1 means more alike."
+    )
+
+    section("1 · Choose two records")
+    last = len(df) - 1
+    picker = st.columns(2)
+    row_a = picker[0].number_input("Record 1 (row number)", 0, last, 0, 1)
+    row_b = picker[1].number_input("Record 2 (row number)", 0, last, min(1, last), 1)
+    if row_a == row_b:
+        st.warning("Same record selected twice — distance will be 0 and cosine 1.")
+
+    section("2 · Choose the attributes to compare")
+    selected = st.multiselect("Numerical attributes", numerical,
+                              default=numerical[: min(5, len(numerical))])
+    if not require(len(selected) >= 1, "Please select at least one attribute."):
+        return
+
+    scale = st.checkbox(
+        "Standardize before comparing (recommended)", value=True,
+        help="Unit_Price reaches 95,000 while Discount only reaches 0.3. Without "
+             "scaling, Unit_Price alone would decide the distance.",
+    )
+
+    subset = df[selected].copy()
+    missing_here = int(subset.iloc[[row_a, row_b]].isna().sum().sum())
+    if missing_here:
+        st.info(str(missing_here) + " missing value(s) in these records were replaced "
+                "with the column median before calculating.")
+    subset = subset.fillna(subset.median(numeric_only=True)).dropna(axis=1, how="all")
+
+    if subset.shape[1] == 0:
+        st.warning("The selected attributes contain no usable values.")
+        return
+
+    try:
+        if scale:
+            prepared = pd.DataFrame(StandardScaler().fit_transform(subset),
+                                    columns=subset.columns, index=subset.index)
+        else:
+            prepared = subset
+    except Exception as error:
+        st.error("The attributes could not be prepared. Details: " + str(error))
+        return
+
+    # reshape(1, -1) turns one row into the 2D array scikit-learn expects
+    vector_a = prepared.iloc[row_a].to_numpy(dtype=float).reshape(1, -1)
+    vector_b = prepared.iloc[row_b].to_numpy(dtype=float).reshape(1, -1)
+
+    section("3 · The two records")
+    table = pd.DataFrame({
+        "Attribute": list(subset.columns),
+        "Record " + str(row_a): df.iloc[row_a][list(subset.columns)].values,
+        "Record " + str(row_b): df.iloc[row_b][list(subset.columns)].values,
+    })
+    if scale:
+        table["Scaled " + str(row_a)] = vector_a[0].round(4)
+        table["Scaled " + str(row_b)] = vector_b[0].round(4)
+    st.dataframe(table, width="stretch", hide_index=True)
+
+    section("4 · Results")
+    try:
+        euclidean = float(euclidean_distances(vector_a, vector_b)[0][0])
+        manhattan = float(manhattan_distances(vector_a, vector_b)[0][0])
+        # Cosine is undefined if either vector is all zeros
+        if np.allclose(vector_a, 0) or np.allclose(vector_b, 0):
+            cosine = np.nan
+        else:
+            cosine = float(cosine_similarity(vector_a, vector_b)[0][0])
+    except Exception as error:
+        st.error("The measures could not be calculated. Details: " + str(error))
+        return
+
+    results = st.columns(3)
+    with results[0].container(border=True):
+        st.metric("📏 Euclidean Distance", f"{euclidean:.4f}")
+    with results[1].container(border=True):
+        st.metric("🧱 Manhattan Distance", f"{manhattan:.4f}")
+    with results[2].container(border=True):
+        st.metric("🧭 Cosine Similarity",
+                  "Not defined" if pd.isna(cosine) else f"{cosine:.4f}")
+
+    if pd.isna(cosine):
+        st.caption("Cosine similarity is undefined because one record became a zero "
+                   "vector after scaling.")
+    else:
+        if cosine > 0.8:
+            st.success("These two records are very similar.")
+        elif cosine > 0.3:
+            st.info("These two records are moderately similar.")
+        elif cosine > -0.3:
+            st.warning("These two records are almost unrelated.")
+        else:
+            st.warning("These two records point in opposite directions.")
+
+    with st.expander("📖  Formulas used"):
+        st.markdown(
+            r"""
+For two records **p** and **q** with *n* numerical attributes:
+
+**Euclidean distance** (straight-line):
+$$d(p,q) = \sqrt{\sum_{i=1}^{n}(p_i - q_i)^2}$$
+
+**Manhattan distance** (city-block):
+$$d(p,q) = \sum_{i=1}^{n}|p_i - q_i|$$
+
+**Cosine similarity** (angle between the vectors):
+$$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
+            """
+        )
+
+    with st.expander("🔢  Step-by-step calculation"):
+        difference = vector_a[0] - vector_b[0]
+        st.dataframe(
+            pd.DataFrame({
+                "Attribute": list(subset.columns),
+                "p": vector_a[0].round(4),
+                "q": vector_b[0].round(4),
+                "p − q": difference.round(4),
+                "|p − q|": np.abs(difference).round(4),
+                "(p − q)²": (difference ** 2).round(4),
+            }),
+            width="stretch", hide_index=True,
+        )
+        st.markdown(
+            "- Sum of (p − q)² = **" + str(round(float((difference ** 2).sum()), 4))
+            + "** → Euclidean = square root = **" + str(round(euclidean, 4)) + "**\n"
+            "- Sum of |p − q| = **" + str(round(float(np.abs(difference).sum()), 4))
+            + "** → Manhattan = **" + str(round(manhattan, 4)) + "**"
+        )
+
+
+# =============================================================================
+# SECTION 9 : PAGE 6 - DATASET COMPARISON
+# =============================================================================
+
+def page_comparison():
+    hero(
+        "🔀 Dataset Comparison",
+        "Upload two CSV datasets and compare their structure, quality and numerical data",
+        ["Dataset A", "Dataset B", "Side-by-Side Analysis"],
+    )
+
+    section("1 · Upload two datasets")
+
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown("### 📘 Dataset A")
+        file_a = st.file_uploader(
+            "Upload first CSV",
+            type=["csv"],
+            key="compare_file_a",
+            help="Choose the first dataset you want to compare.",
+        )
+
+    with right:
+        st.markdown("### 📗 Dataset B")
+        file_b = st.file_uploader(
+            "Upload second CSV",
+            type=["csv"],
+            key="compare_file_b",
+            help="Choose the second dataset you want to compare.",
+        )
+
+    if st.button("🔍 Compare Datasets", type="primary", width="stretch"):
+        if file_a is None or file_b is None:
+            st.warning("Please upload both Dataset A and Dataset B.")
+        else:
+            df_a, error_a = load_csv(file_a)
+            df_b, error_b = load_csv(file_b)
+
+            if error_a:
+                st.error("Dataset A: " + error_a)
+            elif error_b:
+                st.error("Dataset B: " + error_b)
+            else:
+                df_a, _ = auto_parse_date_columns(df_a)
+                df_b, _ = auto_parse_date_columns(df_b)
+                st.session_state.df_compare_a = df_a
+                st.session_state.df_compare_b = df_b
+                st.session_state.compare_a_name = file_a.name
+                st.session_state.compare_b_name = file_b.name
+                st.success("Both datasets loaded successfully. Comparison is ready.")
+
+    df_a = st.session_state.df_compare_a
+    df_b = st.session_state.df_compare_b
+
+    if df_a is None or df_b is None:
+        st.info("Upload two CSV files and click **Compare Datasets** to begin.")
+        return
+
+    section("2 · Dataset summary")
+
+    left, right = st.columns(2)
+    with left.container(border=True):
+        st.markdown("### 📘 Dataset A")
+        st.caption(str(st.session_state.compare_a_name))
+        metrics = st.columns(3)
+        metrics[0].metric("Rows", f"{len(df_a):,}")
+        metrics[1].metric("Columns", f"{len(df_a.columns):,}")
+        metrics[2].metric("Missing", f"{int(df_a.isna().sum().sum()):,}")
+
+    with right.container(border=True):
+        st.markdown("### 📗 Dataset B")
+        st.caption(str(st.session_state.compare_b_name))
+        metrics = st.columns(3)
+        metrics[0].metric("Rows", f"{len(df_b):,}")
+        metrics[1].metric("Columns", f"{len(df_b.columns):,}")
+        metrics[2].metric("Missing", f"{int(df_b.isna().sum().sum()):,}")
+
+    section("3 · Structural comparison")
+
+    comparison = pd.DataFrame({
+        "Metric": ["Rows", "Columns", "Missing Values", "Duplicate Rows"],
+        "Dataset A": [
+            len(df_a), len(df_a.columns),
+            int(df_a.isna().sum().sum()), int(df_a.duplicated().sum())
+        ],
+        "Dataset B": [
+            len(df_b), len(df_b.columns),
+            int(df_b.isna().sum().sum()), int(df_b.duplicated().sum())
+        ],
+    })
+    comparison["Difference (A - B)"] = (
+        comparison["Dataset A"] - comparison["Dataset B"]
+    )
+    st.dataframe(comparison, width="stretch", hide_index=True)
+
+    section("4 · Column comparison")
+
+    common_columns = [c for c in df_a.columns if c in df_b.columns]
+    only_a = [c for c in df_a.columns if c not in df_b.columns]
+    only_b = [c for c in df_b.columns if c not in df_a.columns]
+
+    metrics = st.columns(3)
+    metrics[0].metric("Common Columns", len(common_columns))
+    metrics[1].metric("Only in Dataset A", len(only_a))
+    metrics[2].metric("Only in Dataset B", len(only_b))
+
+    if common_columns:
+        st.markdown("**Common columns:** " + ", ".join(map(str, common_columns)))
+    if only_a:
+        st.markdown("**Only in Dataset A:** " + ", ".join(map(str, only_a)))
+    if only_b:
+        st.markdown("**Only in Dataset B:** " + ", ".join(map(str, only_b)))
+
+    section("5 · Numerical comparison")
+
+    numerical_a = detect_column_types(df_a)["numerical"]
+    numerical_b = detect_column_types(df_b)["numerical"]
+    common_numerical = [c for c in numerical_a if c in numerical_b]
+
+    if not common_numerical:
+        st.info("No common numerical columns were found between the two datasets.")
+    else:
+        selected = st.multiselect(
+            "Select numerical columns to compare",
+            common_numerical,
+            default=common_numerical[:min(5, len(common_numerical))],
+            key="comparison_numerical_columns",
+        )
+
+        if selected:
+            rows = []
+            for column in selected:
+                a = df_a[column].dropna()
+                b = df_b[column].dropna()
+                rows.append({
+                    "Column": column,
+                    "A Mean": round(float(a.mean()), 2) if len(a) else np.nan,
+                    "B Mean": round(float(b.mean()), 2) if len(b) else np.nan,
+                    "Mean Difference": round(float(a.mean() - b.mean()), 2) if len(a) and len(b) else np.nan,
+                    "A Median": round(float(a.median()), 2) if len(a) else np.nan,
+                    "B Median": round(float(b.median()), 2) if len(b) else np.nan,
+                    "A Min": round(float(a.min()), 2) if len(a) else np.nan,
+                    "B Min": round(float(b.min()), 2) if len(b) else np.nan,
+                    "A Max": round(float(a.max()), 2) if len(a) else np.nan,
+                    "B Max": round(float(b.max()), 2) if len(b) else np.nan,
+                })
+            st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+            # Side-by-side mean chart for the selected common numerical columns.
+            chart_rows = []
+            for column in selected:
+                chart_rows.append({"Column": column, "Dataset": "A", "Mean": df_a[column].mean()})
+                chart_rows.append({"Column": column, "Dataset": "B", "Mean": df_b[column].mean()})
+            chart_df = pd.DataFrame(chart_rows)
+            try:
+                figure = px.bar(
+                    chart_df, x="Column", y="Mean", color="Dataset",
+                    barmode="group", text_auto=".2s",
+                    color_discrete_sequence=PALETTE,
+                )
+                st.plotly_chart(style_chart(figure, "Mean comparison"), width="stretch")
+            except Exception:
+                pass
+
+    section("6 · Dataset preview")
+    tab_a, tab_b = st.tabs(["📘 Dataset A", "📗 Dataset B"])
+    with tab_a:
+        st.dataframe(df_a.head(10), width="stretch")
+    with tab_b:
+        st.dataframe(df_b.head(10), width="stretch")
+
+    if st.button("🗑️ Clear comparison"):
+        st.session_state.df_compare_a = None
+        st.session_state.df_compare_b = None
+        st.session_state.compare_a_name = None
+        st.session_state.compare_b_name = None
+        st.rerun()
 
 
 # =============================================================================
@@ -1478,17 +1665,14 @@ def chart_6_correlation(df, numerical):
 # =============================================================================
 
 def build_sidebar():
-    """Draw the authenticated sidebar and return the selected page."""
-    user = st.session_state.user
-    st.sidebar.markdown("## 📊 Sales Data Mining")
-    st.sidebar.caption("Logged in as " + str(user["email"]))
+    """Draw the sidebar and return the page the user selected."""
+    st.sidebar.markdown("## 📊 DataLens")
+    st.sidebar.caption("Sales Data Mining & Analytics")
 
     page = st.sidebar.radio(
         "Navigation",
-        [
-            "Dashboard", "Upload Dataset", "Dataset Overview", "Preprocessing",
-            "Visualization", "History", "Compare"
-        ],
+        ["🏠 Home", "📋 Dataset Overview", "🧹 Data Preprocessing",
+         "📊 Visualization", "📐 Similarity Analysis", "🔀 Dataset Comparison"],
         label_visibility="collapsed",
     )
 
@@ -1501,14 +1685,16 @@ def build_sidebar():
         info[0].metric("Rows", f"{df.shape[0]:,}")
         info[1].metric("Cols", df.shape[1])
         st.sidebar.metric("Missing", f"{int(df.isna().sum().sum()):,}")
+
+        st.sidebar.divider()
         st.sidebar.download_button(
-            "⬇ Download Cleaned Dataset",
+            "⬇️  Download Cleaned Dataset",
             data=csv_bytes(df),
             file_name="cleaned_dataset.csv",
             mime="text/csv",
             width="stretch",
         )
-        if st.sidebar.button("↩ Reset to Original", width="stretch"):
+        if st.sidebar.button("↩️  Reset to Original", width="stretch"):
             st.session_state.df_working = st.session_state.df_original.copy()
             st.session_state.action_log = []
             st.rerun()
@@ -1516,138 +1702,27 @@ def build_sidebar():
         st.sidebar.info("No dataset loaded yet.")
 
     st.sidebar.divider()
-    if st.sidebar.button("Logout", width="stretch"):
-        log_out()
-        st.rerun()
-
+    st.sidebar.caption("Python · Pandas · NumPy · Scikit-learn · Plotly · Streamlit")
     return page
-
-
-def page_dashboard():
-    """Simple dashboard landing page for the main navigation."""
-    hero(
-        "📈 Dashboard",
-        "A quick overview of the active dataset and its key measures.",
-        ["Summary", "Key Metrics"],
-    )
-
-    df = st.session_state.df_working
-    if df is None:
-        st.info("Please load a dataset on the Home page first.")
-        return
-
-    types = detect_column_types(df)
-    numerical = types["numerical"]
-    if not numerical:
-        st.warning("This dataset has no numerical columns to summarize.")
-        return
-
-    value_col = guess_column(numerical, HINTS_VALUE)
-    profit_col = guess_column([column for column in numerical if column != value_col], HINTS_PROFIT)
-
-    row = st.columns(4)
-    with row[0].container(border=True):
-        st.metric("Rows", f"{df.shape[0]:,}")
-    with row[1].container(border=True):
-        st.metric("Columns", f"{df.shape[1]:,}")
-    with row[2].container(border=True):
-        st.metric("Total " + str(value_col), f"{df[value_col].sum():,.2f}" if value_col else "—")
-    with row[3].container(border=True):
-        if value_col:
-            st.metric("Average " + str(value_col), f"{df[value_col].mean():,.2f}")
-        else:
-            st.metric("Average", "—")
-
-    if value_col and profit_col:
-        st.dataframe(df[[value_col, profit_col]].head(10), width="stretch")
-    elif value_col:
-        st.dataframe(df[[value_col]].head(10), width="stretch")
-
-    if st.session_state.action_log:
-        with st.expander("📜 Recent steps"):
-            for index, entry in enumerate(st.session_state.action_log[-8:], start=1):
-                st.write(str(index) + ". " + entry)
-
-
-def page_history():
-    """Show a lightweight history of actions taken in the current session."""
-    hero(
-        "🕘 History",
-        "A short log of the preprocessing steps applied during this session.",
-        ["Session Log"],
-    )
-
-    if not st.session_state.action_log:
-        st.info("No actions recorded yet.")
-        return
-
-    for index, entry in enumerate(st.session_state.action_log, start=1):
-        st.write(str(index) + ". " + entry)
-
-
-def page_compare():
-    """Small compare page for row-to-row review using the active dataset."""
-    hero(
-        "🔄 Compare",
-        "Compare two rows to inspect how values differ across the current dataset.",
-        ["Similarity", "Dissimilarity"],
-    )
-
-    df = st.session_state.df_working
-    if df is None:
-        st.info("Please load a dataset on the Home page first.")
-        return
-
-    if len(df) < 2:
-        st.warning("At least two rows are needed to compare records.")
-        return
-
-    left, right = st.columns(2)
-    with left:
-        row_a = st.selectbox("First row", range(len(df)), index=0, format_func=lambda i: f"Row {i + 1}")
-    with right:
-        row_b = st.selectbox("Second row", range(len(df)), index=1, format_func=lambda i: f"Row {i + 1}")
-
-    if row_a == row_b:
-        st.warning("Choose two different rows to compare.")
-        return
-
-    first = df.iloc[row_a]
-    second = df.iloc[row_b]
-    comparison = pd.DataFrame({
-        "Column": df.columns,
-        "Row A": first.values,
-        "Row B": second.values,
-        "Same": first.eq(second).tolist(),
-    })
-    st.dataframe(comparison, width="stretch", hide_index=True)
 
 
 def main():
     inject_custom_style()
     page = build_sidebar()
 
-    if page == "Dashboard":
-        page_dashboard()
-    elif page == "Upload Dataset":
+    if page.endswith("Home"):
         page_home()
-    elif page == "Dataset Overview":
+    elif page.endswith("Dataset Overview"):
         page_overview()
-    elif page == "Preprocessing":
+    elif page.endswith("Data Preprocessing"):
         page_preprocessing()
-    elif page == "Visualization":
+    elif page.endswith("Visualization"):
         page_visualization()
-    elif page == "History":
-        page_history()
-    elif page == "Compare":
-        page_compare()
+    elif page.endswith("Similarity Analysis"):
+        page_similarity()
+    elif page.endswith("Dataset Comparison"):
+        page_comparison()
 
 
-# =============================================================================
-# ENTRY POINT
-# =============================================================================
-
-if st.session_state.user is None:
-    auth_screen()
-else:
-    main()
+# Streamlit runs this file top to bottom, so we call main() directly.
+main()
