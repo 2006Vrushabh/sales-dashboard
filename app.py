@@ -47,7 +47,7 @@ warnings.filterwarnings("ignore")
 
 st.set_page_config(
     page_title="DataLens",
-    page_icon="📊",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -131,14 +131,14 @@ def inject_custom_style():
 
 
 def hero(title, subtitle, pills=None):
-    """Draw the gradient banner at the top of a page."""
+    """Draw the DataLens application heading on every page."""
     pill_html = ""
     if pills:
         pill_html = "".join(
             "<span class='pill'>" + str(p) + "</span>" for p in pills
         )
     st.markdown(
-        "<div class='hero'><h1>" + title + "</h1><p>" + subtitle + "</p>"
+        "<div class='hero'><h1>DataLens</h1><p>" + subtitle + "</p>"
         + pill_html + "</div>",
         unsafe_allow_html=True,
     )
@@ -365,7 +365,7 @@ for key, default in [
 
 def page_home():
     hero(
-        "📊 Sales Data Mining",
+        " Sales Data Mining",
         "Automated Data Preprocessing and Exploratory Analysis of Sales Data",
         ["Unit II : Data Mining", "Upload any CSV", "Clean → Transform → Visualize"],
     )
@@ -380,7 +380,7 @@ def page_home():
             type=["csv"],
             help="Any comma-separated file with a header row in the first line.",
         )
-        if st.button("🔍  Analyze Dataset", type="primary", width="stretch"):
+        if st.button("  Analyze Dataset", type="primary", width="stretch"):
             if uploaded_file is None:
                 st.warning("Please choose a CSV file first, or load the sample dataset.")
             else:
@@ -401,7 +401,7 @@ def page_home():
                 "- Numbers, text and dates all supported\n"
                 "- Missing values may be blank or `NA`"
             )
-            if st.button("📁  Use Sample Sales Dataset", width="stretch"):
+            if st.button("  Use Sample Sales Dataset", width="stretch"):
                 sample = load_sample_dataset()
                 if sample is None:
                     st.error("Sample file not found. Expected sales_dataset.csv in the project folder or data/sales_dataset.csv")
@@ -411,7 +411,7 @@ def page_home():
 
     df = st.session_state.df_working
     if df is None:
-        st.info("👆 Upload a CSV file or click **Use Sample Sales Dataset** to begin.")
+        st.info(" Upload a CSV file or click **Use Sample Sales Dataset** to begin.")
         return
 
     # ---------------------- Summary metric cards -------------------------
@@ -447,7 +447,7 @@ def page_home():
     if missing_total or duplicate_total:
         st.warning(
             "This dataset needs cleaning: " + f"{missing_total:,}" + " missing value(s) and "
-            + f"{duplicate_total:,}" + " duplicate row(s). Go to **🧹 Data Preprocessing**."
+            + f"{duplicate_total:,}" + " duplicate row(s). Go to ** Data Preprocessing**."
         )
     else:
         st.success("This dataset is already clean — no missing values and no duplicates.")
@@ -456,7 +456,7 @@ def page_home():
     st.dataframe(df.head(8), width="stretch")
 
     if st.session_state.action_log:
-        with st.expander("🧾  Steps applied so far"):
+        with st.expander("  Steps applied so far"):
             for number, entry in enumerate(st.session_state.action_log, start=1):
                 st.write(str(number) + ". " + entry)
 
@@ -467,7 +467,7 @@ def page_home():
 
 def page_overview():
     hero(
-        "📋 Dataset Overview",
+        " Dataset Overview",
         "Data objects, attribute types and the statistical description of the data",
         ["Data Objects & Attribute Types", "Statistical Description"],
     )
@@ -478,7 +478,7 @@ def page_overview():
 
     types = detect_column_types(df)
     tab_preview, tab_info, tab_stats = st.tabs(
-        ["👁️  Preview", "🔎  Column Information", "📐  Statistical Description"]
+        ["  Preview", "  Column Information", "  Statistical Description"]
     )
 
     # ------------------------------ PREVIEW ------------------------------
@@ -493,22 +493,22 @@ def page_overview():
     with tab_info:
         row = st.columns(3)
         with row[0].container(border=True):
-            st.metric("🔢 Numerical", len(types["numerical"]))
+            st.metric(" Numerical", len(types["numerical"]))
         with row[1].container(border=True):
-            st.metric("🔤 Categorical", len(types["categorical"]))
+            st.metric(" Categorical", len(types["categorical"]))
         with row[2].container(border=True):
-            st.metric("📅 Date / Time", len(types["datetime"]))
+            st.metric(" Date / Time", len(types["datetime"]))
 
         section("Every column at a glance")
         rows = []
         for column in df.columns:
             missing = int(df[column].isna().sum())
             if column in types["numerical"]:
-                attribute_type = "🔢 Numerical"
+                attribute_type = " Numerical"
             elif column in types["datetime"]:
-                attribute_type = "📅 Date / Time"
+                attribute_type = " Date / Time"
             else:
-                attribute_type = "🔤 Categorical"
+                attribute_type = " Categorical"
             rows.append({
                 "Column": column,
                 "Attribute Type": attribute_type,
@@ -580,7 +580,7 @@ def page_overview():
 
         st.dataframe(pd.DataFrame(stats_rows), width="stretch", hide_index=True)
 
-        with st.expander("ℹ️  What do these measures mean?"):
+        with st.expander("ℹ  What do these measures mean?"):
             st.markdown(
                 "- **Mean** — the average. Pulled around by extreme values.\n"
                 "- **Median** — the middle value. A safer centre when outliers exist.\n"
@@ -599,7 +599,7 @@ def page_overview():
 
 def page_preprocessing():
     hero(
-        "🧹 Data Preprocessing",
+        " Data Preprocessing",
         "Cleaning, transformation, discretization and reduction of the dataset",
         ["Data Cleaning", "Transformation", "Discretization", "Reduction"],
     )
@@ -619,7 +619,7 @@ def page_preprocessing():
         st.metric("Duplicate Rows", f"{int(df.duplicated().sum()):,}")
 
     tab_clean, tab_transform, tab_bin, tab_reduce = st.tabs(
-        ["🧽  Cleaning", "🔄  Transformation", "🪣  Discretization", "✂️  Reduction"]
+        ["  Cleaning", "  Transformation", "  Discretization", "  Reduction"]
     )
 
     with tab_clean:
@@ -643,7 +643,7 @@ def tab_cleaning():
         "Fills numerical gaps with the median, categorical gaps with the mode, "
         "and removes duplicate rows — all in one step."
     )
-    if st.button("✨  Clean Dataset Automatically", type="primary", width="stretch"):
+    if st.button("  Clean Dataset Automatically", type="primary", width="stretch"):
         types = detect_column_types(df)
         before_missing = int(df.isna().sum().sum())
         before_rows = df.shape[0]
@@ -706,7 +706,7 @@ def tab_cleaning():
             "is safer than the mean when outliers are present."
         )
 
-        if st.button("✅  Apply treatment"):
+        if st.button("  Apply treatment"):
             types = detect_column_types(df)
             before_missing = int(df.isna().sum().sum())
             before_rows = df.shape[0]
@@ -751,9 +751,9 @@ def tab_cleaning():
             f"{duplicate_count:,}" + " duplicate row(s) found. Duplicates bias every "
             "statistical measure, so they should normally be removed."
         )
-        with st.expander("👀  Preview the duplicate rows"):
+        with st.expander("  Preview the duplicate rows"):
             st.dataframe(df[duplicate_mask].head(15), width="stretch")
-        if st.button("🗑️  Remove duplicates"):
+        if st.button("  Remove duplicates"):
             before_rows = df.shape[0]
             cleaned = df.drop_duplicates(keep="first").reset_index(drop=True)
             st.session_state.df_working = cleaned
@@ -794,7 +794,7 @@ def tab_cleaning():
     else:
         st.info("Preview: every value converts safely.")
 
-    if st.button("🔄  Apply conversion"):
+    if st.button("  Apply conversion"):
         updated = df.copy()
         updated[column_to_fix] = preview
         st.session_state.df_working = updated
@@ -876,7 +876,7 @@ Unit_Price 51–94,968) cannot be compared fairly.
         width="stretch",
     )
 
-    if st.button("➕  Add transformed columns to the dataset"):
+    if st.button("  Add transformed columns to the dataset"):
         updated = df.copy()
         for column in transformed.columns:
             updated[column] = transformed[column]
@@ -968,7 +968,7 @@ def tab_discretization():
         width="stretch",
     )
 
-    if st.button("➕  Add the bin column to the dataset"):
+    if st.button("  Add the bin column to the dataset"):
         updated = df.copy()
         updated[column + "_Bin"] = binned.astype(str)
         st.session_state.df_working = updated
@@ -1003,7 +1003,7 @@ def tab_reduction():
             with row[2].container(border=True):
                 st.metric("Reduction", f"{100 * (1 - len(selected) / df.shape[1]):.0f} %")
             st.dataframe(df[selected].head(8), width="stretch")
-            if st.button("✂️  Apply column reduction"):
+            if st.button("  Apply column reduction"):
                 st.session_state.df_working = df[selected].copy()
                 log("Reduced dataset to " + str(len(selected)) + " column(s).")
                 st.success("Dataset reduced.")
@@ -1035,7 +1035,7 @@ def tab_reduction():
             st.caption("Close means = a good sample. That is the whole point of "
                        "numerosity reduction.")
 
-        if st.button("✂️  Apply sampling"):
+        if st.button("  Apply sampling"):
             st.session_state.df_working = sampled
             log("Sampled " + str(percentage) + "% of rows.")
             st.success("Working dataset replaced with the sample.")
@@ -1047,7 +1047,7 @@ def tab_reduction():
 
 def page_visualization():
     hero(
-        "📊 Data Visualization",
+        " Data Visualization",
         "Six interactive charts. Choose the columns from the dropdowns in each card.",
         ["Bar", "Bar", "Line", "Histogram", "Scatter", "Heatmap"],
     )
@@ -1091,7 +1091,7 @@ def aggregate(df, group_column, value_column, how):
 
 def chart_1_sales_by_category(df, categorical, numerical, default_category, default_value):
     with st.container(border=True):
-        st.markdown("### 1️⃣  Sales by Category")
+        st.markdown("### 1⃣  Sales by Category")
         st.caption("Bar chart — compares a measure across the categories of a column.")
 
         if not require(len(categorical) > 0 and len(numerical) > 0,
@@ -1126,7 +1126,7 @@ def chart_1_sales_by_category(df, categorical, numerical, default_category, defa
 
 def chart_2_sales_by_region(df, categorical, numerical, default_region, default_value):
     with st.container(border=True):
-        st.markdown("### 2️⃣  Sales by Region")
+        st.markdown("### 2⃣  Sales by Region")
         st.caption("Bar chart — the same idea applied to a location-type column.")
 
         if not require(len(categorical) > 0 and len(numerical) > 0,
@@ -1168,7 +1168,7 @@ def chart_2_sales_by_region(df, categorical, numerical, default_region, default_
 
 def chart_3_monthly_sales(df, dates, numerical, default_value):
     with st.container(border=True):
-        st.markdown("### 3️⃣  Monthly Sales")
+        st.markdown("### 3⃣  Monthly Sales")
         st.caption("Line chart — how a measure changes over time.")
 
         if not require(
@@ -1216,7 +1216,7 @@ def chart_3_monthly_sales(df, dates, numerical, default_value):
 
 def chart_4_distribution(df, numerical, default_value):
     with st.container(border=True):
-        st.markdown("### 4️⃣  Sales Distribution")
+        st.markdown("### 4⃣  Sales Distribution")
         st.caption("Histogram — how the values of one numerical column are spread out.")
 
         if not require(len(numerical) > 0, "This chart needs a numerical column."):
@@ -1252,7 +1252,7 @@ def chart_4_distribution(df, numerical, default_value):
 
 def chart_5_sales_vs_profit(df, numerical, categorical, default_value, default_profit):
     with st.container(border=True):
-        st.markdown("### 5️⃣  Sales vs Profit")
+        st.markdown("### 5⃣  Sales vs Profit")
         st.caption("Scatter plot — the relationship between two numerical columns.")
 
         if not require(len(numerical) >= 2,
@@ -1297,7 +1297,7 @@ def chart_5_sales_vs_profit(df, numerical, categorical, default_value, default_p
 
 def chart_6_correlation(df, numerical):
     with st.container(border=True):
-        st.markdown("### 6️⃣  Correlation Heatmap")
+        st.markdown("### 6⃣  Correlation Heatmap")
         st.caption("Shows how strongly every pair of numerical columns moves together.")
 
         if not require(len(numerical) >= 2,
@@ -1331,7 +1331,7 @@ def chart_6_correlation(df, numerical):
 
 def page_similarity():
     hero(
-        "📐 Similarity Analysis",
+        " Similarity Analysis",
         "Measure how similar or dissimilar any two records in the dataset are",
         ["Euclidean", "Manhattan", "Cosine"],
     )
@@ -1422,11 +1422,11 @@ def page_similarity():
 
     results = st.columns(3)
     with results[0].container(border=True):
-        st.metric("📏 Euclidean Distance", f"{euclidean:.4f}")
+        st.metric(" Euclidean Distance", f"{euclidean:.4f}")
     with results[1].container(border=True):
-        st.metric("🧱 Manhattan Distance", f"{manhattan:.4f}")
+        st.metric(" Manhattan Distance", f"{manhattan:.4f}")
     with results[2].container(border=True):
-        st.metric("🧭 Cosine Similarity",
+        st.metric(" Cosine Similarity",
                   "Not defined" if pd.isna(cosine) else f"{cosine:.4f}")
 
     if pd.isna(cosine):
@@ -1442,7 +1442,7 @@ def page_similarity():
         else:
             st.warning("These two records point in opposite directions.")
 
-    with st.expander("📖  Formulas used"):
+    with st.expander("  Formulas used"):
         st.markdown(
             r"""
 For two records **p** and **q** with *n* numerical attributes:
@@ -1458,7 +1458,7 @@ $$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
             """
         )
 
-    with st.expander("🔢  Step-by-step calculation"):
+    with st.expander("  Step-by-step calculation"):
         difference = vector_a[0] - vector_b[0]
         st.dataframe(
             pd.DataFrame({
@@ -1485,7 +1485,7 @@ $$\cos(p,q) = \frac{p \cdot q}{\|p\|\,\|q\|}$$
 
 def page_comparison():
     hero(
-        "🔀 Dataset Comparison",
+        " Dataset Comparison",
         "Upload two CSV datasets and compare their structure, quality and numerical data",
         ["Dataset A", "Dataset B", "Side-by-Side Analysis"],
     )
@@ -1495,7 +1495,7 @@ def page_comparison():
     left, right = st.columns(2)
 
     with left:
-        st.markdown("### 📘 Dataset A")
+        st.markdown("###  Dataset A")
         file_a = st.file_uploader(
             "Upload first CSV",
             type=["csv"],
@@ -1504,7 +1504,7 @@ def page_comparison():
         )
 
     with right:
-        st.markdown("### 📗 Dataset B")
+        st.markdown("###  Dataset B")
         file_b = st.file_uploader(
             "Upload second CSV",
             type=["csv"],
@@ -1512,7 +1512,7 @@ def page_comparison():
             help="Choose the second dataset you want to compare.",
         )
 
-    if st.button("🔍 Compare Datasets", type="primary", width="stretch"):
+    if st.button(" Compare Datasets", type="primary", width="stretch"):
         if file_a is None or file_b is None:
             st.warning("Please upload both Dataset A and Dataset B.")
         else:
@@ -1543,7 +1543,7 @@ def page_comparison():
 
     left, right = st.columns(2)
     with left.container(border=True):
-        st.markdown("### 📘 Dataset A")
+        st.markdown("###  Dataset A")
         st.caption(str(st.session_state.compare_a_name))
         metrics = st.columns(3)
         metrics[0].metric("Rows", f"{len(df_a):,}")
@@ -1551,7 +1551,7 @@ def page_comparison():
         metrics[2].metric("Missing", f"{int(df_a.isna().sum().sum()):,}")
 
     with right.container(border=True):
-        st.markdown("### 📗 Dataset B")
+        st.markdown("###  Dataset B")
         st.caption(str(st.session_state.compare_b_name))
         metrics = st.columns(3)
         metrics[0].metric("Rows", f"{len(df_b):,}")
@@ -1646,13 +1646,13 @@ def page_comparison():
                 pass
 
     section("6 · Dataset preview")
-    tab_a, tab_b = st.tabs(["📘 Dataset A", "📗 Dataset B"])
+    tab_a, tab_b = st.tabs([" Dataset A", " Dataset B"])
     with tab_a:
         st.dataframe(df_a.head(10), width="stretch")
     with tab_b:
         st.dataframe(df_b.head(10), width="stretch")
 
-    if st.button("🗑️ Clear comparison"):
+    if st.button(" Clear comparison"):
         st.session_state.df_compare_a = None
         st.session_state.df_compare_b = None
         st.session_state.compare_a_name = None
@@ -1666,13 +1666,13 @@ def page_comparison():
 
 def build_sidebar():
     """Draw the sidebar and return the page the user selected."""
-    st.sidebar.markdown("## 📊 DataLens")
+    st.sidebar.markdown("##  DataLens")
     st.sidebar.caption("Sales Data Mining & Analytics")
 
     page = st.sidebar.radio(
         "Navigation",
-        ["🏠 Home", "📋 Dataset Overview", "🧹 Data Preprocessing",
-         "📊 Visualization", "📐 Similarity Analysis", "🔀 Dataset Comparison"],
+        [" Home", " Dataset Overview", " Data Preprocessing",
+         " Visualization", " Similarity Analysis", " Dataset Comparison"],
         label_visibility="collapsed",
     )
 
@@ -1688,13 +1688,13 @@ def build_sidebar():
 
         st.sidebar.divider()
         st.sidebar.download_button(
-            "⬇️  Download Cleaned Dataset",
+            "⬇  Download Cleaned Dataset",
             data=csv_bytes(df),
             file_name="cleaned_dataset.csv",
             mime="text/csv",
             width="stretch",
         )
-        if st.sidebar.button("↩️  Reset to Original", width="stretch"):
+        if st.sidebar.button("↩  Reset to Original", width="stretch"):
             st.session_state.df_working = st.session_state.df_original.copy()
             st.session_state.action_log = []
             st.rerun()
